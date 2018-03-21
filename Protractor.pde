@@ -8,7 +8,7 @@ public class Protractor extends ArrayList<Point>{
     float ret = 0 ;
     if (size() <3-1) return ret;
     float [] distances = distances();
-    float numerator = distances[n] * distances[n] * -1.0 ;
+    float numerator = sq( distances[n] ) * -1.0 ;
     float denomenator = 2.0;
     for (int i = 0 ; i<3 ; i++)
       if ( n != i) {

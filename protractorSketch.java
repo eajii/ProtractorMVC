@@ -3,8 +3,7 @@ import processing.data.*;
 import processing.event.*; 
 import processing.opengl.*; 
 
-import java.awt.MouseInfo; 
-import javax.swing.*; 
+import processing.awt.PSurfaceAWT; 
 
 import java.util.HashMap; 
 import java.util.ArrayList; 
@@ -17,29 +16,35 @@ import java.io.IOException;
 
 public class protractorSketch extends PApplet {
 
-
-Protractor pro = new Protractor();
-ProtractorView pv = new ProtractorView();
-ProtractorController pc = new ProtractorController(pv,pro);
-JFrameWindow myWindow = new JFrameWindow(pc);
+JFrameWindow myWindow ;
+ProtractorController pc = new ProtractorController();
 public void setup() {
-  background(207.2f,207.2f);
-  pv.setController(pc);
-  myWindow.setUndecorated(true);
-  myWindow.setOpacity(0.045f);
-  myWindow.setSize(1640,970);
-  myWindow.setGlassPane(pv);
-  myWindow.setVisible(true);
-  pv.setVisible(true);
-  pv.setOpaque(true);
+  
+  myWindow = new JFrameWindow(pc);
 }
-public void draw(){}
-public class JFrameWindow extends javax.swing.JFrame implements java.awt.event.KeyListener{
-  ProtractorController parent ;
-  JFrameWindow(ProtractorController parent){this.parent = parent ;addKeyListener(this);}
+public void draw(){
+  background(207.0f,207.0f);
+  myWindow.draw();
+}
+
+public class JFrameWindow implements java.awt.event.KeyListener{
+  PSurfaceAWT surf = (PSurfaceAWT) getSurface() ;
+  PSurfaceAWT.SmoothCanvas turf = (PSurfaceAWT.SmoothCanvas) surf.getNative() ;
+  javax.swing.JFrame jframe = (javax.swing.JFrame) turf.getFrame() ;
+  ProtractorController pController ;
+  JFrameWindow(ProtractorController controller) {
+    jframe.removeNotify() ;
+    jframe.setUndecorated(true) ;
+    jframe.setOpacity(0.045f) ;
+    this.pController = controller.getController(jframe) ;
+    jframe.setGlassPane(this.pController.getView()) ;
+    jframe.addKeyListener(this) ;
+    jframe.setVisible(true) ;
+  }
+  public void draw() { this.pController.getView().update(); }
   public void keyTyped(java.awt.event.KeyEvent e) {  }
   public void keyPressed(java.awt.event.KeyEvent e) {  }
-  public void keyReleased(java.awt.event.KeyEvent e) { parent.keyReleased(e); }
+  public void keyReleased(java.awt.event.KeyEvent e) { this.pController.keyReleased(e) ; }
 }
 public class Point {
   float x,y;
@@ -49,28 +54,45 @@ public class Point {
     return " x: " + x + " y: " + y;
   }
 }
+static ProtractorController instance;
 public class ProtractorController {
   ProtractorView pView;
   Protractor protractor;
-  public Protractor getModel() { return protractor; }
-  ProtractorController(ProtractorView pv, Protractor p){ pView = pv; protractor = p; }
+  ProtractorController() { }
+  public Protractor getModel() { return (instance != null)? instance.protractor : protractor ; }
+  public ProtractorView getView() { return (instance != null)? instance.pView : pView ; }
+  public ProtractorController getController(javax.swing.JFrame jframe){ 
+    if ( null != instance ) return instance ;
+    instance = new ProtractorController ( ) ;
+    instance.protractor = new Protractor( ) ;
+    instance.pView = new ProtractorView ( instance ) ;
+    return instance;
+  }
+  public boolean isReady () {return pView != null && protractor != null;}
   public void keyReleased(java.awt.event.KeyEvent e) {
     char key = e.getKeyChar();
-    if (key == '.') protractor.add(getUpdatedMousePoint());
-    else if (key == 'a') protractor.set(protractor.size() - 1, getUpdatedMousePoint());
-    else if (key == '0' || key == '1') protractor.set(0, getUpdatedMousePoint());
-    else if (key == '2') protractor.set(1, getUpdatedMousePoint());
-    else if (key == '3') protractor.set(2, getUpdatedMousePoint());
-    if ( protractor.size() == 3) print(protractor);
-    else if ( protractor.size() <3 ) println(protractor.size());
+    if (key == '.') add();
+    else if (key == 'a') set(instance.protractor.size() - 1);
+    else if (key == '0' || key == '1') set(0);
+    else if (key == '2') set(1);
+    else if (key == '3') set(2);
+    if ( instance.protractor.size() == 3) label();
+    else if ( instance.protractor.size() <3 ) println(instance.protractor.size());
     else {
-      Point p = protractor.get(protractor.size()-1);
-      protractor = new Protractor();
-      protractor.add(p);
+      instance.protractor.remove(0);
+      instance.protractor.remove(0);
     }
-    pView.update();
+    updateView();
   }
-  public Point getUpdatedMousePoint() { return new Point ((float)MouseInfo.getPointerInfo().getLocation().getX(),(float)MouseInfo.getPointerInfo().getLocation().getY()) ; }
+  public int size(){ return instance.protractor.size() ; }
+  public void updateView () { instance.pView.update() ; }
+  public void label(){ instance.pView.label( instance.protractor.toString() ); }
+  public void add () { instance.protractor.add(getUpdatedMousePoint()); }
+  public void set (int index) {
+    if(index < size()) instance.protractor.set(index, getUpdatedMousePoint());
+    else add();
+  }
+  public Point getUpdatedMousePoint() { return new Point ((float)mouseX,(float)mouseY) ; }
 }
 public class Protractor extends ArrayList<Point>{
   public String toString() {
@@ -82,7 +104,7 @@ public class Protractor extends ArrayList<Point>{
     float ret = 0 ;
     if (size() <3-1) return ret;
     float [] distances = distances();
-    float numerator = distances[n] * distances[n] * -1.0f ;
+    float numerator = sq( distances[n] ) * -1.0f ;
     float denomenator = 2.0f;
     for (int i = 0 ; i<3 ; i++)
       if ( n != i) {
@@ -103,20 +125,39 @@ public class Protractor extends ArrayList<Point>{
     return sqrt( sq(a.x-b.x) + sq(a.y-b.y) ) ; 
   }
 }
-
-class ProtractorView extends JComponent  {
-    ProtractorController pc;
-    ProtractorView(){}
-    protected void paintComponent(java.awt.Graphics g) {
-      if ( null == pc) return;
-        for(Point point : pc.getModel()) {
-            g.setColor( new java.awt.Color(207,0,0) );
-            g.fillOval((int)point.x - 10, (int)point.y - 10, 20, 20);
-        }
+class ProtractorView extends javax.swing.JComponent  {
+  ProtractorController pc;
+  ProtractorView(ProtractorController controller){ pc = controller; setVisible(true);}
+  String vertexAngle = "";
+  protected void draw() {
+    if ( !pc.isReady()) return;
+    if (vertexAngle.length() > 0)
+      text(vertexAngle, pc.getModel().get(1).x,pc.getModel().get(1).y);
+    for(Point point : pc.getModel()) {
+      fill(207,0,0) ;
+      ellipse(point.x, point.y, 20, 20);
     }
-    public void setController (ProtractorController pc) {this.pc = pc;}
-    public void update() { repaint(); }
+    drawModel();
+  }
+  public void setController (ProtractorController pc) {this.pc = pc;}
+  public void update() { draw() ; }
+  public void label(String s) { vertexAngle = s; }
+  public void drawModel(){
+    fill(207,0,0);
+    int z = pc.getModel().size();
+    Point previousPoint = null;
+    if (z>0) {
+      for(Point p : pc.getModel()) {
+        if (null != previousPoint )
+          line(previousPoint.x,previousPoint.y,p.x,p.y);
+        previousPoint = p;
+      }
+      line(pc.getModel().get(z-1).x,pc.getModel().get(z-1).y,mouseX,mouseY);
+    }
+    ellipse(mouseX,mouseY,20,20);
+  }
 }
+  public void settings() {  fullScreen(); }
   static public void main(String[] passedArgs) {
     String[] appletArgs = new String[] { "protractorSketch" };
     if (passedArgs != null) {
